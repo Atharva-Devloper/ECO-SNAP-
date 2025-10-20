@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { reportsAPI, handleApiError } from '../services/api';
+import { reportsAPI, handleApiError, getImageUrl } from '../services/api';
 import MapView from '../components/MapView';
 
 const Dashboard = () => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    fetchReports();
-  }, [user.username, isAdmin]);
+    if (isAuthenticated) {
+      fetchReports();
+    } else {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
 
   const fetchReports = async () => {
     try {
@@ -56,7 +60,8 @@ const Dashboard = () => {
     });
   };
 
-  if (loading) {
+  // Don't show loading screen if not authenticated
+  if (loading && isAuthenticated) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -141,16 +146,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Map View */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">Map View</h2>
-            <div className="text-sm text-gray-600">
-              Interactive map showing all reported issues
-            </div>
-          </div>
-          <MapView height="500px" showAllReports={isAdmin} />
-        </div>
+        {/* Map View - Visit /map page */}
 
         {/* Reports List */}
         {reports.length === 0 ? (
@@ -172,13 +168,13 @@ const Dashboard = () => {
         ) : (
           <div className="space-y-6">
             {reports.map((report) => (
-              <div key={report.id} className="card">
+              <div key={report._id} className="card">
                 <div className="flex flex-col lg:flex-row gap-6">
                   {/* Photo */}
-                  {report.photo && (
+                  {report.image && (
                     <div className="lg:w-48 flex-shrink-0">
                       <img 
-                        src={report.photo} 
+                        src={getImageUrl(report.image)} 
                         alt="Waste issue" 
                         className="w-full h-48 lg:h-32 object-cover rounded-lg"
                       />
@@ -190,11 +186,11 @@ const Dashboard = () => {
                     <div className="flex flex-col sm:flex-row justify-between items-start mb-4">
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                          Report #{report.id.slice(-6)}
+                          Report #{report._id.slice(-6)}
                         </h3>
                         {isAdmin && (
                           <p className="text-sm text-gray-600 mb-1">
-                            Reported by: <span className="font-medium">{report.reporterName}</span>
+                            Reported by: <span className="font-medium">{report.user?.name || 'Anonymous'}</span>
                           </p>
                         )}
                         <p className="text-sm text-gray-600">
@@ -210,7 +206,7 @@ const Dashboard = () => {
                         {isAdmin && (
                           <select
                             value={report.status}
-                            onChange={(e) => updateReportStatus(report.id, e.target.value)}
+                            onChange={(e) => updateReportStatus(report._id, e.target.value)}
                             className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
                           >
                             <option value="Pending">Pending</option>
@@ -223,9 +219,9 @@ const Dashboard = () => {
                     <p className="text-gray-700 mb-4">{report.description}</p>
                     
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm text-gray-500">
-                      <p>Reported: {formatDate(report.dateReported)}</p>
-                      {report.dateUpdated !== report.dateReported && (
-                        <p>Updated: {formatDate(report.dateUpdated)}</p>
+                      <p>Reported: {formatDate(report.createdAt)}</p>
+                      {report.updatedAt !== report.createdAt && (
+                        <p>Updated: {formatDate(report.updatedAt)}</p>
                       )}
                     </div>
                   </div>

@@ -3,7 +3,6 @@ import { AuthProvider } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
-import ConnectionTest from './components/ConnectionTest';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -53,7 +52,6 @@ function App() {
             </Routes>
           </main>
           <Footer />
-          <ConnectionTest />
         </div>
       </Router>
     </AuthProvider>

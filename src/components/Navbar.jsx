@@ -103,7 +103,7 @@ const Navbar = () => {
             {isAuthenticated ? (
               <div className="flex items-center space-x-4">
                 <span className="text-sm text-gray-600">
-                  Welcome, <span className="font-medium">{user.name}</span>
+                  Welcome, <span className="font-medium">{user?.name || user?.username || 'User'}</span>
                 </span>
                 <button
                   onClick={handleLogout}

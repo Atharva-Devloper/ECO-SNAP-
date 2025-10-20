@@ -50,11 +50,15 @@ const FitBounds = ({ reports }) => {
   const map = useMap();
 
   useEffect(() => {
-    if (reports.length > 0) {
-      const bounds = L.latLngBounds(
-        reports.map(report => [report.coordinates.lat, report.coordinates.lng])
-      );
-      map.fitBounds(bounds, { padding: [20, 20] });
+    if (reports && reports.length > 0) {
+      try {
+        const bounds = L.latLngBounds(
+          reports.map(report => [report.coordinates.lat, report.coordinates.lng])
+        );
+        map.fitBounds(bounds, { padding: [20, 20] });
+      } catch (error) {
+        console.error('Error fitting bounds:', error);
+      }
     }
   }, [reports, map]);
 
@@ -168,7 +172,7 @@ const MapView = ({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        {reports.length > 0 && <FitBounds reports={reports} />}
+        <FitBounds reports={reports} />
         
         {reports.map((report) => (
           <Marker

@@ -46,13 +46,17 @@ const userSchema = new mongoose.Schema({
 });
 
 // Encrypt password using bcrypt
+// NOTE: Avoid mixing async and next() incorrectly. Either use next with try/catch
+// or rely on async middleware without next. Here we properly short-circuit and call next once.
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) {
-    next();
+  if (!this.isModified('password')) return next();
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    return next();
+  } catch (err) {
+    return next(err);
   }
-
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
 });
 
 // Match user entered password to hashed password in database
