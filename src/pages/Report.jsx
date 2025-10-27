@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { reportsAPI, handleApiError } from '../services/api';
+import { handleApiError, reportsAPI } from '../services/api';
 
 const Report = () => {
   const [formData, setFormData] = useState({
@@ -9,14 +9,15 @@ const Report = () => {
     category: 'Other',
     location: '',
     coordinates: { lat: null, lng: null },
-    photo: null
+    photo: null,
   });
   const [photoPreview, setPhotoPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [error, setError] = useState('');
-  
+  const [manualEntry, setManualEntry] = useState(false);
+
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -28,7 +29,7 @@ const Report = () => {
   // Get current location
   const getCurrentLocation = () => {
     setLocationLoading(true);
-    
+
     if (!navigator.geolocation) {
       setError('Geolocation is not supported by this browser');
       setLocationLoading(false);
@@ -37,24 +38,26 @@ const Report = () => {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
           coordinates: {
             lat: position.coords.latitude,
-            lng: position.coords.longitude
-          }
+            lng: position.coords.longitude,
+          },
         }));
+        setManualEntry(false);
         setLocationLoading(false);
       },
       (error) => {
         console.error('Error getting location:', error);
         setError('Unable to get your location. Please enter it manually.');
+        setManualEntry(true); //auto show manual input
         setLocationLoading(false);
       },
       {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 300000 // 5 minutes
+        maximumAge: 300000, // 5 minutes
       }
     );
   };
@@ -63,9 +66,22 @@ const Report = () => {
     const { name, value } = e.target;
     setFormData({
       ...formData,
-      [name]: value
+      [name]: value,
     });
     setError(''); // Clear error when user types
+  };
+
+  const handleCoordinateChange = (e) => {
+    const { name, value } = e.target; // 'lat' or 'lng'
+    const parsed = value === '' ? null : parseFloat(value);
+    setFormData((prev) => ({
+      ...prev,
+      coordinates: {
+        ...prev.coordinates,
+        [name]: Number.isFinite(parsed) ? parsed : null,
+      },
+    }));
+    setError('');
   };
 
   const handlePhotoChange = (e) => {
@@ -73,9 +89,9 @@ const Report = () => {
     if (file) {
       setFormData({
         ...formData,
-        photo: file
+        photo: file,
       });
-      
+
       // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -103,8 +119,17 @@ const Report = () => {
       return;
     }
 
-    if (!formData.coordinates.lat || !formData.coordinates.lng) {
-      setError('Location coordinates are required. Please allow location access or enter coordinates manually.');
+    const hasCoords =
+      formData.coordinates &&
+      Number.isFinite(formData.coordinates.lat) &&
+      Number.isFinite(formData.coordinates.lng);
+    const hasLocationText =
+      formData.location && formData.location.trim().length > 0;
+
+    if (!hasCoords && !hasLocationText) {
+      setError(
+        'Location coordinates are required. Please allow location access or enter coordinates manually.'
+      );
       setLoading(false);
       return;
     }
@@ -115,11 +140,18 @@ const Report = () => {
       submitData.append('description', formData.description);
       submitData.append('category', formData.category);
       submitData.append('location', formData.location);
-      submitData.append('coordinates', JSON.stringify(formData.coordinates));
+
+      if (hasCoords) {
+        submitData.append('coordinates', JSON.stringify(formData.coordinates));
+      } else {
+        // prefer omitting coordinates; sending empty string is tolerated by older backend
+        submitData.append('coordinates', '');
+      }
+
       submitData.append('image', formData.photo);
 
       const response = await reportsAPI.createReport(submitData);
-      
+
       if (response.data.success) {
         setSuccess(true);
         // Reset form after success
@@ -135,18 +167,37 @@ const Report = () => {
     }
   };
 
+  // --- Defensive numeric parsing for display ---
+  const latNum = Number(formData.coordinates?.lat);
+  const lngNum = Number(formData.coordinates?.lng);
+  const hasValidCoords = Number.isFinite(latNum) && Number.isFinite(lngNum);
+  // ------------------------------------------------
+
   if (success) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="card max-w-md text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            <svg
+              className="w-8 h-8 text-green-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Report Submitted!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Report Submitted!
+          </h2>
           <p className="text-gray-600 mb-4">
-            Thank you for helping keep our community clean. Your report has been submitted successfully.
+            Thank you for helping keep our community clean. Your report has been
+            submitted successfully.
           </p>
           <p className="text-sm text-gray-500">Redirecting to dashboard...</p>
         </div>
@@ -158,8 +209,12 @@ const Report = () => {
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Report Waste Issue</h1>
-          <p className="text-gray-600">Help us keep the community clean by reporting waste issues</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Report Waste Issue
+          </h1>
+          <p className="text-gray-600">
+            Help us keep the community clean by reporting waste issues
+          </p>
         </div>
 
         <div className="card">
@@ -174,35 +229,108 @@ const Report = () => {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <svg
+                    className="w-5 h-5 text-blue-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
                   </svg>
                   <span className="text-sm font-medium text-blue-900">
-                    {locationLoading ? 'Getting your location...' : 
-                     formData.coordinates.lat ? 'Location detected' : 'Location required'}
+                    {locationLoading
+                      ? 'Getting your location...'
+                      : hasValidCoords
+                      ? 'Location detected'
+                      : 'Location required'}
                   </span>
                 </div>
-                {!locationLoading && (
-                  <button
-                    type="button"
-                    onClick={getCurrentLocation}
-                    className="text-sm text-blue-600 hover:text-blue-800 underline"
-                  >
-                    {formData.coordinates.lat ? 'Update' : 'Get Location'}
-                  </button>
-                )}
+                <div className="flex items-center space-x-3">
+                  {!locationLoading && (
+                    <button
+                      type="button"
+                      onClick={getCurrentLocation}
+                      className="text-sm text-blue-600 hover:text-blue-800 underline"
+                    >
+                      {hasValidCoords ? 'Update' : 'Get Location'}
+                    </button>
+                  )}
+                  {!hasValidCoords && (
+                    <button
+                      type="button"
+                      onClick={() => setManualEntry((prev) => !prev)}
+                      className="text-sm text-blue-600 hover:text-blue-800 underline"
+                    >
+                      {manualEntry ? 'Hide manual input' : 'Enter manually'}
+                    </button>
+                  )}
+                </div>
               </div>
-              {formData.coordinates.lat && (
+
+              {hasValidCoords && (
                 <p className="text-xs text-blue-700 mt-1">
-                  Coordinates: {formData.coordinates.lat.toFixed(6)}, {formData.coordinates.lng.toFixed(6)}
+                  Coordinates: {latNum.toFixed(6)}, {lngNum.toFixed(6)}
                 </p>
+              )}
+
+              {/* NEW: Manual coordinate inputs */}
+              {manualEntry && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700">
+                      Latitude
+                    </label>
+                    <input
+                      name="lat"
+                      type="number"
+                      step="any"
+                      value={formData.coordinates.lat ?? ''}
+                      onChange={handleCoordinateChange}
+                      className="input-field"
+                      placeholder="e.g., 12.9715987"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700">
+                      Longitude
+                    </label>
+                    <input
+                      name="lng"
+                      type="number"
+                      step="any"
+                      value={formData.coordinates.lng ?? ''}
+                      onChange={handleCoordinateChange}
+                      className="input-field"
+                      placeholder="e.g., 77.5945627"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 col-span-2">
+                    Not sure how to get coordinates? You can paste them from
+                    Google Maps (right-click a point & click "What's here?").
+                    Alternatively, enter a street address in the Location
+                    Details field below.
+                  </p>
+                </div>
               )}
             </div>
 
             {/* Category Selection */}
             <div>
-              <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="category"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Category
               </label>
               <select
@@ -223,15 +351,18 @@ const Report = () => {
 
             {/* Photo Upload */}
             <div>
-              <label htmlFor="photo" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="photo"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Photo <span className="text-red-500">*</span>
               </label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors">
                 {photoPreview ? (
                   <div className="space-y-4">
-                    <img 
-                      src={photoPreview} 
-                      alt="Preview" 
+                    <img
+                      src={photoPreview}
+                      alt="Preview"
                       className="max-w-full h-48 object-cover rounded-lg mx-auto"
                     />
                     <button
@@ -247,11 +378,28 @@ const Report = () => {
                   </div>
                 ) : (
                   <div>
-                    <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <svg
+                      className="w-12 h-12 text-gray-400 mx-auto mb-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
                     </svg>
-                    <p className="text-gray-600 mb-2">Click to upload a photo of the waste issue</p>
+                    <p className="text-gray-600 mb-2">
+                      Click to upload a photo of the waste issue
+                    </p>
                     <p className="text-sm text-gray-500">PNG, JPG up to 5MB</p>
                   </div>
                 )}
@@ -260,12 +408,15 @@ const Report = () => {
                   name="photo"
                   type="file"
                   accept="image/*"
-                  required
                   onChange={handlePhotoChange}
                   className="hidden"
                 />
                 {!photoPreview && (
-                  <label htmlFor="photo" className="btn-primary mt-4 cursor-pointer inline-block">
+                  <label
+                    htmlFor="photo"
+                    className="btn-primary mt-4 cursor-pointer inline-block"
+                    aria-required="true"
+                  >
                     Choose Photo
                   </label>
                 )}
@@ -274,7 +425,10 @@ const Report = () => {
 
             {/* Description */}
             <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="description"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Description <span className="text-red-500">*</span>
               </label>
               <textarea
@@ -291,7 +445,10 @@ const Report = () => {
 
             {/* Location */}
             <div>
-              <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="location"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Location Details
               </label>
               <input
@@ -304,7 +461,8 @@ const Report = () => {
                 placeholder="Street address or landmark (e.g., Main St & 5th Ave, Central Park entrance)"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Optional: Add specific location details to help cleanup crews find the issue
+                Optional: Add specific location details to help cleanup crews
+                find the issue
               </p>
             </div>
 
