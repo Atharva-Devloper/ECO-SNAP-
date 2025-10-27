@@ -1,8 +1,7 @@
-import Report from '../models/reportModel.js';
-import User from '../models/userModel.js';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
 import { fileURLToPath } from 'url';
+import Report from '../models/reportModel.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,54 +11,89 @@ const __dirname = path.dirname(__filename);
 // @access  Private
 export const createReport = async (req, res) => {
   try {
-    const { description, category, location, coordinates } = req.body;
+    const { description, category, location } = req.body;
+    let coordinatesInput = req.body.coordinates; // could be stringified JSON or object or empty
 
-    // Validation
-    if (!description || !coordinates) {
+    // Basic description validation
+    if (!description || !description.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide description and coordinates'
+        message: 'Please provide a description',
       });
     }
 
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: 'Please upload an image'
+        message: 'Please upload an image',
       });
     }
 
-    // Parse coordinates if they're strings
-    let lat, lng;
-    if (typeof coordinates === 'string') {
-      const coords = JSON.parse(coordinates);
-      lat = parseFloat(coords.lat);
-      lng = parseFloat(coords.lng);
-    } else {
-      lat = parseFloat(coordinates.lat);
-      lng = parseFloat(coordinates.lng);
+    // Safe parse coordinates only if non-empty string or object present
+    let lat = null;
+    let lng = null;
+    if (
+      typeof coordinatesInput === 'string' &&
+      coordinatesInput.trim() !== ''
+    ) {
+      try {
+        const parsed = JSON.parse(coordinatesInput);
+        if (parsed && parsed.lat !== undefined && parsed.lng !== undefined) {
+          const pLat = parseFloat(parsed.lat);
+          const pLng = parseFloat(parsed.lng);
+          if (Number.isFinite(pLat) && Number.isFinite(pLng)) {
+            lat = pLat;
+            lng = pLng;
+          }
+        }
+      } catch (err) {
+        // invalid JSON -> ignore coordinates, let fallback use `location`
+        console.warn('Invalid coordinates JSON received, ignoring coordinates');
+      }
+    } else if (coordinatesInput && typeof coordinatesInput === 'object') {
+      // already an object (some clients may send as object)
+      const pLat = parseFloat(coordinatesInput.lat);
+      const pLng = parseFloat(coordinatesInput.lng);
+      if (Number.isFinite(pLat) && Number.isFinite(pLng)) {
+        lat = pLat;
+        lng = pLng;
+      }
     }
 
-    // Validate coordinates
-    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+    const hasLocationText = location && location.trim().length > 0;
+
+    // Require either coordinates or a textual location
+    if (!hasCoords && !hasLocationText) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid coordinates provided'
+        message:
+          'Please provide either coordinates or a textual location (address/landmark)',
       });
     }
 
-    // Create report
-    const report = await Report.create({
+    // If coordinates are present, ensure they are in valid range
+    if (hasCoords) {
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid coordinates provided',
+        });
+      }
+    }
+
+    // Build report payload. If coords are not present we set coordinates: null
+    const reportPayload = {
       user: req.user._id,
-      description,
+      description: description.trim(),
       category: category || 'Other',
       image: req.file.filename,
-      location: location || '',
-      coordinates: {
-        lat,
-        lng
-      }
-    });
+      location: hasLocationText ? location.trim() : '',
+      coordinates: hasCoords ? { lat, lng } : null,
+    };
+
+    // Create report
+    const report = await Report.create(reportPayload);
 
     // Populate user data
     await report.populate('user', 'username name email');
@@ -68,13 +102,13 @@ export const createReport = async (req, res) => {
       success: true,
       data: {
         ...report.toObject(),
-        imageUrl: `/uploads/${report.image}`
+        imageUrl: `/uploads/${report.image}`,
       },
-      message: 'Report created successfully'
+      message: 'Report created successfully',
     });
   } catch (error) {
     console.error(error);
-    
+
     // Delete uploaded file if report creation fails
     if (req.file) {
       const filePath = path.join(__dirname, '../uploads/', req.file.filename);
@@ -85,7 +119,7 @@ export const createReport = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: 'Server error while creating report'
+      message: 'Server error while creating report',
     });
   }
 };
@@ -95,7 +129,14 @@ export const createReport = async (req, res) => {
 // @access  Private
 export const getReports = async (req, res) => {
   try {
-    const { status, category, page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    const {
+      status,
+      category,
+      page = 1,
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = req.query;
 
     // Build query
     let query = {};
@@ -136,9 +177,9 @@ export const getReports = async (req, res) => {
     const total = await Report.countDocuments(query);
 
     // Add imageUrl to each report
-    const reportsWithImageUrl = reports.map(report => ({
+    const reportsWithImageUrl = reports.map((report) => ({
       ...report.toObject(),
-      imageUrl: `/uploads/${report.image}`
+      imageUrl: `/uploads/${report.image}`,
     }));
 
     res.json({
@@ -148,14 +189,14 @@ export const getReports = async (req, res) => {
         page: pageNum,
         limit: limitNum,
         total,
-        pages: Math.ceil(total / limitNum)
-      }
+        pages: Math.ceil(total / limitNum),
+      },
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching reports'
+      message: 'Server error while fetching reports',
     });
   }
 };
@@ -172,15 +213,18 @@ export const getReport = async (req, res) => {
     if (!report) {
       return res.status(404).json({
         success: false,
-        message: 'Report not found'
+        message: 'Report not found',
       });
     }
 
     // Check if user can access this report
-    if (req.user.role !== 'admin' && report.user._id.toString() !== req.user._id.toString()) {
+    if (
+      req.user.role !== 'admin' &&
+      report.user._id.toString() !== req.user._id.toString()
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Not authorized to access this report'
+        message: 'Not authorized to access this report',
       });
     }
 
@@ -188,14 +232,14 @@ export const getReport = async (req, res) => {
       success: true,
       data: {
         ...report.toObject(),
-        imageUrl: `/uploads/${report.image}`
-      }
+        imageUrl: `/uploads/${report.image}`,
+      },
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching report'
+      message: 'Server error while fetching report',
     });
   }
 };
@@ -212,7 +256,7 @@ export const updateReportStatus = async (req, res) => {
     if (!report) {
       return res.status(404).json({
         success: false,
-        message: 'Report not found'
+        message: 'Report not found',
       });
     }
 
@@ -234,15 +278,15 @@ export const updateReportStatus = async (req, res) => {
       success: true,
       data: {
         ...updatedReport.toObject(),
-        imageUrl: `/uploads/${updatedReport.image}`
+        imageUrl: `/uploads/${updatedReport.image}`,
       },
-      message: 'Report updated successfully'
+      message: 'Report updated successfully',
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: 'Server error while updating report'
+      message: 'Server error while updating report',
     });
   }
 };
@@ -257,7 +301,7 @@ export const deleteReport = async (req, res) => {
     if (!report) {
       return res.status(404).json({
         success: false,
-        message: 'Report not found'
+        message: 'Report not found',
       });
     }
 
@@ -271,13 +315,13 @@ export const deleteReport = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Report deleted successfully'
+      message: 'Report deleted successfully',
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: 'Server error while deleting report'
+      message: 'Server error while deleting report',
     });
   }
 };
@@ -292,7 +336,7 @@ export const getNearbyReports = async (req, res) => {
     if (!lat || !lng) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide latitude and longitude'
+        message: 'Please provide latitude and longitude',
       });
     }
 
@@ -306,32 +350,34 @@ export const getNearbyReports = async (req, res) => {
         $near: {
           $geometry: {
             type: 'Point',
-            coordinates: [longitude, latitude]
+            coordinates: [longitude, latitude],
           },
-          $maxDistance: radiusInMeters
-        }
-      }
+          $maxDistance: radiusInMeters,
+        },
+      },
     })
-    .populate('user', 'username name')
-    .select('description category coordinates status priority createdAt image')
-    .limit(100); // Limit for performance
+      .populate('user', 'username name')
+      .select(
+        'description category coordinates status priority createdAt image'
+      )
+      .limit(100); // Limit for performance
 
     // Add imageUrl to each report
-    const reportsWithImageUrl = reports.map(report => ({
+    const reportsWithImageUrl = reports.map((report) => ({
       ...report.toObject(),
-      imageUrl: `/uploads/${report.image}`
+      imageUrl: `/uploads/${report.image}`,
     }));
 
     res.json({
       success: true,
       data: reportsWithImageUrl,
-      count: reports.length
+      count: reports.length,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching nearby reports'
+      message: 'Server error while fetching nearby reports',
     });
   }
 };
@@ -351,19 +397,19 @@ export const getReportStats = async (req, res) => {
           _id: null,
           total: { $sum: 1 },
           pending: {
-            $sum: { $cond: [{ $eq: ['$status', 'Pending'] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ['$status', 'Pending'] }, 1, 0] },
           },
           inProgress: {
-            $sum: { $cond: [{ $eq: ['$status', 'In Progress'] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ['$status', 'In Progress'] }, 1, 0] },
           },
           cleaned: {
-            $sum: { $cond: [{ $eq: ['$status', 'Cleaned'] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ['$status', 'Cleaned'] }, 1, 0] },
           },
           rejected: {
-            $sum: { $cond: [{ $eq: ['$status', 'Rejected'] }, 1, 0] }
-          }
-        }
-      }
+            $sum: { $cond: [{ $eq: ['$status', 'Rejected'] }, 1, 0] },
+          },
+        },
+      },
     ]);
 
     const categoryStats = await Report.aggregate([
@@ -371,10 +417,10 @@ export const getReportStats = async (req, res) => {
       {
         $group: {
           _id: '$category',
-          count: { $sum: 1 }
-        }
+          count: { $sum: 1 },
+        },
       },
-      { $sort: { count: -1 } }
+      { $sort: { count: -1 } },
     ]);
 
     res.json({
@@ -385,16 +431,16 @@ export const getReportStats = async (req, res) => {
           pending: 0,
           inProgress: 0,
           cleaned: 0,
-          rejected: 0
+          rejected: 0,
         },
-        byCategory: categoryStats
-      }
+        byCategory: categoryStats,
+      },
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching statistics'
+      message: 'Server error while fetching statistics',
     });
   }
 };
