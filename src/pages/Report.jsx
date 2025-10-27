@@ -143,9 +143,6 @@ const Report = () => {
 
       if (hasCoords) {
         submitData.append('coordinates', JSON.stringify(formData.coordinates));
-      } else {
-        // prefer omitting coordinates; sending empty string is tolerated by older backend
-        submitData.append('coordinates', '');
       }
 
       submitData.append('image', formData.photo);
