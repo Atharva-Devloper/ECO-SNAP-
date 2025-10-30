@@ -4,14 +4,14 @@ A full-stack civic-tech web platform for reporting waste issues in local communi
 
 ## 🚀 Features
 
-- **Full-Stack Architecture** - React frontend with Node.js/Express backend
-- **User Authentication** - JWT-based auth with role-based access (admin/user)
-- **Waste Reporting** - Photo upload, description, and location tracking with geolocation
-- **Dashboard Management** - View and manage reports with status updates
-- **Real-time Updates** - Instant status changes and report tracking
-- **Map Integration** - Location-based reporting and nearby waste visualization
-- **Image Upload** - Secure file handling with validation
-- **RESTful API** - Clean, well-documented endpoints
+- **Full-Stack Architecture** - React frontend with Node.js/Express backend.
+- **User Authentication** - JWT-based auth with role-based access (admin/user).
+- **Waste Reporting** - Photo upload, description, and location tracking with geolocation.
+- **Dashboard Management** - View and manage reports with status updates.
+- **Real-time Updates** - Instant status changes and report tracking.
+- **Map Integration** - Location-based reporting and nearby waste visualization.
+- **Image Upload** - Secure file handling with validation.
+- **RESTful API** - Clean, well-documented endpoints.
 
 ## 🛠️ Tech Stack
 
@@ -23,13 +23,13 @@ A full-stack civic-tech web platform for reporting waste issues in local communi
 - **HTTP Client**: Axios
 
 ### Backend
-- **Runtime**: Node.js (ES Modules)
-- **Framework**: Express.js
-- **Database**: MongoDB with Mongoose ODM
-- **Authentication**: JWT (JSON Web Tokens)
-- **File Upload**: Multer
-- **Security**: bcryptjs for password hashing
-- **CORS**: Cross-origin resource sharing
+- **Runtime**: Node.js (ES Modules).
+- **Framework**: Express.js.
+- **Database**: MongoDB with Mongoose ODM.
+- **Authentication**: JWT (JSON Web Tokens).
+- **File Upload**: Multer.
+- **Security**: bcryptjs for password hashing.
+- **CORS**: Cross-origin resource sharing.
 
 ## 📦 Getting Started
 
